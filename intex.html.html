@@ -1,0 +1,614 @@
+
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>星空星座導覽｜名稱・日期・圖片・介紹</title>
+  <style>
+    /* ===== 色票 ===== */
+    :root{
+      --bg: #070a18;
+      --text: #eef2ff;
+      --muted: #b8c1ff;
+      --card-bg: rgba(255,255,255,0.08);
+      --card-stroke: rgba(255,255,255,0.18);
+      --accent: #7c5cff;
+      --accent-2: #00d4ff;
+      --shadow: 0 10px 30px rgba(0,0,0,0.35);
+      --success: #25d366;
+      --warn: #ffb020;
+      --danger: #ff5a75;
+    }
+    [data-theme="light"]{
+      --bg: #f6f8ff;
+      --text: #0c1022;
+      --muted: #53608e;
+      --card-bg: rgba(255,255,255,0.85);
+      --card-stroke: rgba(10,20,60,0.12);
+      --accent: #5b4bff;
+      --accent-2: #11b8ff;
+      --shadow: 0 10px 20px rgba(40,60,120,0.15);
+    }
+
+    html,body{
+      height:100%;
+      margin:0;
+      color:var(--text);
+      font-family: system-ui, -apple-system, "Noto Sans TC", "Microsoft JhengHei",
+                   "Segoe UI", Roboto, Helvetica, Arial, "Noto Color Emoji", sans-serif;
+      line-height:1.6;
+      background: var(--bg);
+      overflow-x:hidden;
+    }
+
+    /* ===== 星空背景（Canvas 層） ===== */
+    .sky{
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+    }
+    /* 漸層霧光 */
+    .nebula{
+      position: fixed;
+      inset: -10% -10% -10% -10%;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(124,92,255,0.25), transparent 60%),
+        radial-gradient(900px 500px at 90% -20%, rgba(0,212,255,0.25), transparent 60%);
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    /* ===== 版面 ===== */
+    .container{
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 28px 20px 80px;
+    }
+    header{
+      display:flex; align-items:center; justify-content:space-between; gap:16px;
+      margin-bottom: 18px;
+    }
+    .title{
+      font-weight:800; letter-spacing:.4px; font-size: clamp(22px, 4vw, 36px);
+      display:flex; align-items:center; gap:10px;
+    }
+    .title .badge{
+      font-size: 12px; color: var(--text);
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      border-radius: 999px; padding: 6px 10px;
+    }
+    .subtitle{
+      margin-top: 4px; color: var(--muted); font-size: 12px;
+    }
+
+    .controls{
+      display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+    }
+    .search, .select, .toggle, .btn{
+      display:flex; align-items:center; gap:8px;
+      background: var(--card-bg); backdrop-filter: blur(10px);
+      border: 1px solid var(--card-stroke); border-radius: 12px;
+      padding: 8px 12px; color: var(--text);
+      box-shadow: var(--shadow); cursor: pointer;
+    }
+    .search input, .select select{
+      border:none; outline:none; background:transparent; color:var(--text);
+      font-size:14px;
+    }
+    .chipset{
+      display:flex; flex-wrap:wrap; gap:8px;
+    }
+    .chip{
+      border: 1px solid var(--card-stroke);
+      background: linear-gradient(135deg, rgba(124,92,255,0.16), rgba(0,212,255,0.16));
+      padding:4px 10px; border-radius:999px; font-size:12px; cursor:pointer;
+      user-select:none;
+    }
+    .chip.active{ outline: 2px solid rgba(124,92,255,.45); }
+
+    /* ===== 網格 & 卡片 ===== */
+    .grid{
+      display:grid; gap:16px;
+      grid-template-columns: repeat(1, minmax(0, 1fr));
+    }
+    @media (min-width:600px){
+      .grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (min-width:960px){
+      .grid{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+
+    .card{
+      position:relative; overflow:hidden; border-radius:16px;
+      background: var(--card-bg); border: 1px solid var(--card-stroke);
+      box-shadow: var(--shadow);
+      transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+    }
+    .card:hover{ transform: translateY(-4px); box-shadow: 0 16px 36px rgba(0,0,0,0.35); border-color: rgba(124,92,255,0.35); }
+    .card.today{ outline: 2px solid var(--warn); }
+    .card.fav{ border-color: rgba(255,90,117,.5); }
+
+    .card-header{
+      display:flex; align-items:center; gap:10px;
+      padding:14px 16px 10px; border-bottom: 1px dashed var(--card-stroke);
+    }
+    .card h3{ margin:0; font-size:18px; letter-spacing:.3px; }
+    .dates{ color: var(--muted); font-size: 13px; }
+    .artwrap{
+      display:flex; align-items:center; justify-content:center;
+      padding: 18px;
+      background:
+        radial-gradient(320px 180px at 80% 0%, rgba(124,92,255,0.22), transparent 60%),
+        radial-gradient(280px 140px at 0% 20%, rgba(0,212,255,0.18), transparent 60%);
+    }
+    .artwrap svg{ width: 120px; height: 120px; filter: drop-shadow(0 8px 14px rgba(0,0,0,0.35)); }
+    .content{ padding: 0 16px 14px; font-size: 14px; color: var(--text); }
+    .meta{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+    .mini{ font-size:12px; border:1px solid var(--card-stroke); border-radius:8px; padding:3px 8px; }
+
+    .actions{
+      display:flex; gap:8px; padding: 0 16px 16px;
+    }
+    .btn{
+      font-size:13px; padding: 6px 10px; border-radius:10px; cursor:pointer;
+      transition: transform .12s ease;
+    }
+    .btn:hover{ transform: translateY(-1px); }
+    .btn.share{ background:linear-gradient(135deg, #0077ff, #00d4ff); color:#fff; border:none; }
+    .btn.print{ background:linear-gradient(135deg, #5b4bff, #7c5cff); color:#fff; border:none; }
+    .btn.fav{ background:linear-gradient(135deg, #ff5a75, #ff8aa5); color:#fff; border:none; }
+    .btn.detail{ background:linear-gradient(135deg, #23c48b, #25d366); color:#fff; border:none; }
+
+    .glow{
+      position:absolute; inset:auto auto -40% -40%;
+      width: 160px; height:160px;
+      background: radial-gradient(closest-side, rgba(124,92,255,0.35), transparent);
+      transform: rotate(18deg); filter: blur(12px); pointer-events:none;
+    }
+
+    .footer{ margin-top: 28px; color: var(--muted); font-size:12px; text-align:center; }
+
+    .backtop{
+      position: fixed; right: 16px; bottom: 16px; border: none;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: white; border-radius: 999px; padding: 12px 14px; font-weight: 700;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.35); cursor: pointer;
+      transition: transform .18s ease, box-shadow .18s ease;
+    }
+    .backtop:hover{ transform: translateY(-2px); box-shadow: 0 16px 28px rgba(0,0,0,0.4); }
+    .hidden{ display:none; }
+
+    /* ===== 詳情彈窗 ===== */
+    .modal{
+      position: fixed; inset:0; display:none; align-items:center; justify-content:center;
+      background: rgba(0,0,0,.45); z-index:10; padding: 20px;
+    }
+    .modal .panel{
+      max-width: 640px; width:100%;
+      background: var(--card-bg);
+      border: 1px solid var(--card-stroke);
+      border-radius: 16px; box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+      overflow:hidden;
+    }
+    .modal header{ padding: 14px 16px; border-bottom: 1px dashed var(--card-stroke); }
+    .modal .body{ padding: 16px; }
+    .modal .close{
+      margin: 0 16px 16px; align-self:flex-end;
+      background: linear-gradient(135deg, #ff5a75, #ff8aa5); color:#fff; border:none;
+      padding: 8px 12px; border-radius: 10px; cursor:pointer;
+    }
+
+    /* ===== 視差游標光暈 ===== */
+    .cursor-glow{
+      position: fixed; pointer-events: none; inset: 0;
+      background: radial-gradient(250px 130px at var(--mx,50%) var(--my,50%),
+                                  rgba(124,92,255,.15), transparent 70%);
+      z-index: -1;
+    }
+  </style>
+</head>
+<body>
+  <!-- 星空背景層 -->
+  <canvas class="sky" id="skyCanvas"></canvas>
+  <div class="nebula"></div>
+  <div class="cursor-glow"></div>
+
+  <div class="container" id="app" data-theme="dark">
+    <header>
+      <div>
+        <div class="title">
+          <span>星空星座導覽</span>
+          <span class="badge">名稱・日期・圖片・介紹</span>
+        </div>
+        <div class="subtitle">支持搜尋、元素篩選、排序、收藏、分享、列印；並自動標記「今日星座」。</div>
+      </div>
+      <div class="controls">
+        <div class="search" title="輸入星座名稱或英文名搜尋">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M15.5 14h-.79l-.28-.27a6.471 6.471 0 0 0 1.57-4.23A6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l4.25 4.25 1.5-1.5L15.5 14Z" fill="currentColor" opacity=".8"></path>
+          </svg>
+          <input id="searchInput" type="search" placeholder="搜尋：牡羊座 / Aries ..." />
+        </div>
+
+        <div class="select">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M7 10l5 5 5-5H7z" fill="currentColor" opacity=".8"></path>
+          </svg>
+          <select id="sortSelect" title="排序">
+            <option value="name_asc">名稱（A→Z）</option>
+            <option value="name_desc">名稱（Z→A）</option>
+            <option value="date_asc">日期（開始）</option>
+            <option value="date_desc">日期（結束）</option>
+          </select>
+        </div>
+
+        <button class="toggle" id="themeBtn" aria-label="切換深淺色主題">切換主題</button>
+      </div>
+    </header>
+
+    <section class="chipset" id="elementChips" aria-label="四元素篩選">
+      <!-- 由 JS 生成 chips -->
+    </section>
+
+    <section class="grid" id="cards">
+      <!-- 卡片由 JS 渲染 -->
+    </section>
+
+    <p class="footer">
+      星座日期為西洋占星通用範圍（按公曆），介紹內容為簡短概述。若要加入你的名字抬頭或校班標識，可告訴我樣式～
+    </p>
+  </div>
+
+  <button class="backtop hidden" id="backTop" aria-label="返回頂部">↑</button>
+
+  <!-- 詳情彈窗 -->
+  <div class="modal" id="detailModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="panel">
+      <header><h3 id="modalTitle">星座詳情</h3></header>
+      <div class="body" id="modalBody"></div>
+      <button class="close" id="modalClose">關閉</button>
+    </div>
+  </div>
+
+  <script>
+    /* ====== 資料：12 星座（新增元素、守護星、符號） ====== */
+    const zodiac = [
+      { zh:"牡羊座", en:"Aries", dates:"3/21 - 4/19", element:"火", planet:"火星", symbol:"♈",
+        intro:"熱情直接、行動派，具領導力與冒險精神，常以先鋒姿態推動事情。",
+        svg:`<svg viewBox="0 0 64 64"><defs><linearGradient id="g1" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="#ff7a7a"/><stop offset="100%" stop-color="#ffcf6e"/></linearGradient></defs>
+          <circle cx="32" cy="32" r="29" fill="none" stroke="url(#g1)" stroke-width="2.6" opacity=".35"/>
+          <path d="M18 26c0-6 4-10 10-10s10 4 10 10M18 26c0 6 4 10 10 10M38 26c0 6 4 10 10 10"
+            fill="none" stroke="url(#g1)" stroke-width="3.5" stroke-linecap="round"/></svg>` },
+      { zh:"金牛座", en:"Taurus", dates:"4/20 - 5/20", element:"土", planet:"金星", symbol:"♉",
+        intro:"務實穩健、重視感官享受與生活品質，耐心與堅持是其強項。",
+        svg:`<svg viewBox="0 0 64 64"><defs><linearGradient id="g2" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="#7c5cff"/><stop offset="100%" stop-color="#00d4ff"/></linearGradient></defs>
+          <circle cx="32" cy="32" r="29" fill="none" stroke="url(#g2)" stroke-width="2.6" opacity=".35"/>
+          <path d="M20 20c4-6 20-6 24 0M24 40c0-8 16-8 16 0s-4 8-8 8-8-4-8-8Z"
+            fill="none" stroke="url(#g2)" stroke-width="3.5" stroke-linecap="round"/></svg>` },
+      { zh:"雙子座", en:"Gemini", dates:"5/21 - 6/20", element:"風", planet:"水星", symbol:"♊",
+        intro:"靈活好奇、溝通力強，適合多任務與快速變動的環境。",
+        svg:`<svg viewBox="0 0 64 64"><defs><linearGradient id="g3" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="#7c5cff"/><stop offset="100%" stop-color="#00d4ff"/></linearGradient></defs>
+          <circle cx="32" cy="32" r="29" fill="none" stroke="url(#g3)" stroke-width="2.6" opacity=".35"/>
+          <path d="M22 20h20M22 44h20M24 24c4 6 12 6 16 0M24 40c4-6 12-6 16 0"
+            fill="none" stroke="url(#g3)" stroke-width="3.5" stroke-linecap="round"/></svg>` },
+      { zh:"巨蟹座", en:"Cancer", dates:"6/21 - 7/22", element:"水", planet:"月亮", symbol:"♋",
+        intro:"情感細膩、重視家庭與安全感，富有同理心與保護欲。",
+        svg:`<svg viewBox="0 0 64 64"><defs><linearGradient id="g4" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="#7c5cff"/><stop offset="100%" stop-color="#00d4ff"/></linearGradient></defs>
+          <circle cx="32" cy="32" r="29" fill="none" stroke="url(#g4)" stroke-width="2.6" opacity=".35"/>
+          <path d="M22 28c0-4 6-6 10-4s4 6 0 8-10 0-10-4Zm20 8c0 4-6 6-10 4s-4-6 0-8 10 0 10 4Z"
+            fill="none" stroke="url(#g4)" stroke-width="3.5" stroke-linecap="round"/></svg>` },
+      { zh:"獅子座", en:"Leo", dates:"7/23 - 8/22", element:"火", planet:"太陽", symbol:"♌",
+        intro:"自信外向、具舞台魅力與領導力，慷慨且重視榮耀與認同。",
+        svg:`<svg viewBox="0 0 64 64"><defs><linearGradient id="g5" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="#ff7a7a"/><stop offset="100%" stop-color="#ffcf6e"/></linearGradient></defs>
+          <circle cx="32" cy="32" r="29" fill="none" stroke="url(#g5)" stroke-width="2.6" opacity=".35"/>
+          <path d="M26 22c2-6 14-6 16 2s-8 10-12 10-8 2-8 6 4 6 8 6 8-2 8-6"
+            fill="none" stroke="url(#g5)" stroke-width="3.5" stroke-linecap="round"/></svg>` },
+      { zh:"處女座", en:"Virgo", dates:"8/23 - 9/22", element:"土", planet:"水星", symbol:"♍",
+        intro:"細緻務實、追求完美與效率，擅長分析與整理，重視健康與秩序。",
+        svg:`<svg viewBox="0 0 64 64"><defs><linearGradient id="g6" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="#7c5cff"/><stop offset="100%" stop-color="#00d4ff"/></linearGradient></defs>
+          <circle cx="32" cy="32" r="29" fill="none" stroke="url(#g6)" stroke-width="2.6" opacity=".35"/>
+          <path d="M22 22v20M22 22c6-6 10-6 12 0v20M34 22c6-6 10-6 12 0v14c0 6-6 6-10 2"
+            fill="none" stroke="url(#g6)" stroke-width="3.5" stroke-linecap="round"/></svg>` },
+      { zh:"天秤座", en:"Libra", dates:"9/23 - 10/22", element:"風", planet:"金星", symbol:"♎",
+        intro:"追求平衡與美感，優雅圓融，擅長維持人際和諧與公平。",
+        svg:`<svg viewBox="0 0 64 64"><defs><linearGradient id="g7" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="#7c5cff"/><stop offset="100%" stop-color="#00d4ff"/></linearGradient></defs>
+          <circle cx="32" cy="32" r="29" fill="none" stroke="url(#g7)" stroke-width="2.6" opacity=".35"/>
+          <path d="M18 40h28M20 32c0-6 6-10 12-10s12 4 12 10M18 36h28"
+            fill="none" stroke="url(#g7)" stroke-width="3.5" stroke-linecap="round"/></svg>` },
+      { zh:"天蠍座", en:"Scorpio", dates:"10/23 - 11/21", element:"水", planet:"冥王星", symbol:"♏",
+        intro:"深沉強烈、洞察力高，重視真相與忠誠，變革與重生的能量強。",
+        svg:`<svg viewBox="0 0 64 64"><defs><linearGradient id="g8" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="#7c5cff"/><stop offset="100%" stop-color="#00d4ff"/></linearGradient></defs>
+          <circle cx="32" cy="32" r="29" fill="none" stroke="url(#g8)" stroke-width="2.6" opacity=".35"/>
+          <path d="M20 22v20M20 22c6-6 10-6 12 0v20M32 22c6-6 10-6 12 0v14M44 36l4 6"
+            fill="none" stroke="url(#g8)" stroke-width="3.5" stroke-linecap="round"/></svg>` },
+      { zh:"射手座", en:"Sagittarius", dates:"11/22 - 12/21", element:"火", planet:"木星", symbol:"♐",
+        intro:"自由樂觀、熱愛探索與知識，目標宏大，重視信念與遠景。",
+        svg:`<svg viewBox="0 0 64 64"><defs><linearGradient id="g9" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="#ff7a7a"/><stop offset="100%" stop-color="#ffcf6e"/></linearGradient></defs>
+          <circle cx="32" cy="32" r="29" fill="none" stroke="url(#g9)" stroke-width="2.6" opacity=".35"/>
+          <path d="M20 44l24-24M30 20h14v14M20 44h14"
+            fill="none" stroke="url(#g9)" stroke-width="3.5" stroke-linecap="round"/></svg>` },
+      { zh:"摩羯座", en:"Capricorn", dates:"12/22 - 1/19", element:"土", planet:"土星", symbol:"♑",
+        intro:"目標導向、紀律與責任感強，穩步前進，重視長期成就與結構。",
+        svg:`<svg viewBox="0 0 64 64"><defs><linearGradient id="g10" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="#7c5cff"/><stop offset="100%" stop-color="#00d4ff"/></linearGradient></defs>
+          <circle cx="32" cy="32" r="29" fill="none" stroke="url(#g10)" stroke-width="2.6" opacity=".35"/>
+          <path d="M22 24v16c0 8 16 8 16 0s-8-8-8-16M38 24c0 6 2 10 8 10"
+            fill="none" stroke="url(#g10)" stroke-width="3.5" stroke-linecap="round"/></svg>` },
+      { zh:"水瓶座", en:"Aquarius", dates:"1/20 - 2/18", element:"風", planet:"天王星", symbol:"♒",
+        intro:"創新獨立、重視理想與人道精神，思維前衛，喜歡突破框架。",
+        svg:`<svg viewBox="0 0 64 64"><defs><linearGradient id="g11" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="#7c5cff"/><stop offset="100%" stop-color="#00d4ff"/></linearGradient></defs>
+          <circle cx="32" cy="32" r="29" fill="none" stroke="url(#g11)" stroke-width="2.6" opacity=".35"/>
+          <path d="M16 26c6-6 10-6 16 0s10 6 16 0M16 38c6-6 10-6 16 0s10 6 16 0"
+            fill="none" stroke="url(#g11)" stroke-width="3.5" stroke-linecap="round"/></svg>` },
+      { zh:"雙魚座", en:"Pisces", dates:"2/19 - 3/20", element:"水", planet:"海王星", symbol:"♓",
+        intro:"感性浪漫、直覺力強，富同情心與想像力，善於共鳴與療癒。",
+        svg:`<svg viewBox="0 0 64 64"><defs><linearGradient id="g12" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="#7c5cff"/><stop offset="100%" stop-color="#00d4ff"/></linearGradient></defs>
+          <circle cx="32" cy="32" r="29" fill="none" stroke="url(#g12)" stroke-width="2.6" opacity=".35"/>
+          <path d="M20 22c0 6 6 10 12 10s12-4 12-10M20 42c0-6 6-10 12-10s12 4 12 10M20 32h24"
+            fill="none" stroke="url(#g12)" stroke-width="3.5" stroke-linecap="round"/></svg>` },
+    ];
+
+    /* ====== 工具：日期解析與今日星座 ====== */
+    function parseMD(md){ // "M/D"
+      const [m, d] = md.split('/').map(v=>parseInt(v,10)); return {m,d};
+    }
+    function inRange(month, day, startMD, endMD){
+      const s = parseMD(startMD), e = parseMD(endMD);
+      // 範圍可能跨年（如摩羯）
+      const afterStart = (month> s.m) || (month===s.m && day>=s.d);
+      const beforeEnd  = (month< e.m) || (month===e.m && day<=e.d);
+      if(s.m <= e.m){ return afterStart && beforeEnd; } // 同年
+      return afterStart || beforeEnd; // 跨年
+    }
+    function getTodaySign(){
+      const now = new Date(); // 使用本地時區
+      const m = now.getMonth()+1, d = now.getDate();
+      const found = zodiac.find(z=>{
+        const [start, end] = z.dates.split(' - ');
+        return inRange(m, d, start, end);
+      });
+      return found?.en || null;
+    }
+
+    /* ====== 狀態 ====== */
+    const state = {
+      q: '', element: '全部', sort: 'name_asc',
+      favs: new Set(JSON.parse(localStorage.getItem('zFavs') || '[]')),
+      today: getTodaySign()
+    };
+
+    /* ====== 四元素 Chips ====== */
+    const elements = ['全部','火','土','風','水'];
+    const chipsEl = document.getElementById('elementChips');
+    elements.forEach(el=>{
+      const chip = document.createElement('button');
+      chip.className = 'chip' + (el==='全部' ? ' active':'');
+      chip.textContent = el;
+      chip.setAttribute('data-el', el);
+      chip.addEventListener('click', ()=>{
+        document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+        chip.classList.add('active');
+        state.element = el;
+        render();
+      });
+      chipsEl.appendChild(chip);
+    });
+
+    /* ====== 渲染卡片 ====== */
+    const cardsEl = document.getElementById('cards');
+    function applyFilterSort(list){
+      let out = list.filter(z=>{
+        const q = state.q.toLowerCase();
+        const hit = z.zh.includes(state.q) || z.en.toLowerCase().includes(q) || z.intro.toLowerCase().includes(q);
+        const elOk = (state.element==='全部') || (z.element===state.element);
+        return hit && elOk;
+      });
+      const getStartNum = z=>{
+        const [s] = z.dates.split(' - ');
+        const {m,d} = parseMD(s);
+        return m*100+d;
+      };
+      const getEndNum = z=>{
+        const [,e] = z.dates.split(' - ');
+        const {m,d} = parseMD(e);
+        return m*100+d;
+      };
+      out.sort((a,b)=>{
+        if(state.sort==='name_asc') return a.en.localeCompare(b.en);
+        if(state.sort==='name_desc') return b.en.localeCompare(a.en);
+        if(state.sort==='date_asc') return getStartNum(a)-getStartNum(b);
+        if(state.sort==='date_desc') return getEndNum(b)-getEndNum(a);
+        return 0;
+      });
+      return out;
+    }
+
+    function render(){
+      const list = applyFilterSort(zodiac);
+      cardsEl.innerHTML = '';
+      list.forEach(item=>{
+        const card = document.createElement('article');
+        card.className = 'card';
+        if(state.today === item.en) card.classList.add('today');
+        if(state.favs.has(item.en)) card.classList.add('fav');
+
+        card.innerHTML = `
+          <div class="glow"></div>
+          <div class="card-header">
+            <h3>${item.zh} <span class="dates">（${item.symbol} ${item.en}｜${item.dates}）</span></h3>
+          </div>
+          <div class="artwrap">${item.svg}</div>
+          <div class="content">
+            <p>${item.intro}</p>
+            <div class="meta">
+              <span class="mini">元素：${item.element}</span>
+              <span class="mini">守護星：${item.planet}</span>
+              <span class="mini">日期：${item.dates}</span>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn detail">詳情</button>
+            <button class="btn fav">${state.favs.has(item.en) ? '已收藏 ♥' : '收藏 ♥'}</button>
+            <button class="btn share">分享</button>
+            <button class="btn print">列印</button>
+          </div>
+        `;
+
+        // 詳情彈窗
+        card.querySelector('.detail').addEventListener('click', ()=>showDetail(item));
+        // 收藏
+        card.querySelector('.fav').addEventListener('click', (e)=>{
+          if(state.favs.has(item.en)) state.favs.delete(item.en);
+          else state.favs.add(item.en);
+          localStorage.setItem('zFavs', JSON.stringify([...state.favs]));
+          render();
+        });
+        // 分享（Web Share API 或 fallback）
+        card.querySelector('.share').addEventListener('click', async ()=>{
+          const text = `我正在看 ${item.zh}（${item.en}）星座：日期 ${item.dates}，元素 ${item.element}，守護星 ${item.planet}`;
+          const shareData = { title: `${item.zh}｜星空星座導覽`, text, url: location.href };
+          if(navigator.share){
+            try{ await navigator.share(shareData); }catch(_){}
+          }else{
+            navigator.clipboard?.writeText(text);
+            alert('已複製分享文字到剪貼簿！');
+          }
+        });
+        // 列印（印整頁或你可在此只印該卡）
+        card.querySelector('.print').addEventListener('click', ()=>window.print());
+        cardsEl.appendChild(card);
+      });
+    }
+    render();
+
+    /* ====== 搜尋 & 排序 ====== */
+    document.getElementById('searchInput').addEventListener('input', e=>{
+      state.q = e.target.value.trim();
+      render();
+    });
+    document.getElementById('sortSelect').addEventListener('change', e=>{
+      state.sort = e.target.value;
+      render();
+    });
+
+    /* ====== 主題切換 ====== */
+    const app = document.getElementById('app');
+    const btn = document.getElementById('themeBtn');
+    btn.addEventListener('click', ()=>{
+      const now = app.getAttribute('data-theme');
+      app.setAttribute('data-theme', now === 'dark' ? 'light' : 'dark');
+    });
+
+    /* ====== 返回頂部按鈕 ====== */
+    const backTop = document.getElementById('backTop');
+    window.addEventListener('scroll', ()=>{
+      const show = window.scrollY > 320;
+      backTop.classList.toggle('hidden', !show);
+    });
+    backTop.addEventListener('click', ()=>window.scrollTo({top:0, behavior:'smooth'}));
+
+    /* ====== 詳情彈窗邏輯 ====== */
+    const modal = document.getElementById('detailModal');
+    const modalBody = document.getElementById('modalBody');
+    const modalTitle = document.getElementById('modalTitle');
+    document.getElementById('modalClose').addEventListener('click', ()=>modal.style.display='none');
+    modal.addEventListener('click', (e)=>{ if(e.target===modal) modal.style.display='none'; });
+    function showDetail(item){
+      modalTitle.textContent = `${item.zh}（${item.symbol} ${item.en}）`;
+      modalBody.innerHTML = `
+        <p>${item.intro}</p>
+        <ul>
+          <li><strong>日期：</strong>${item.dates}</li>
+          <li><strong>元素：</strong>${item.element}</li>
+          <li><strong>守護星：</strong>${item.planet}</li>
+          <li><strong>英文名稱：</strong>${item.en}</li>
+          <li><strong>符號：</strong>${item.symbol}</li>
+        </ul>
+        <p class="subtitle">你可以將此星座加入收藏，或分享給朋友～</p>
+      `;
+      modal.style.display = 'flex';
+    }
+
+    /* ====== 星空背景：Canvas 星星 + 流星 + 視差 ====== */
+    const canvas = document.getElementById('skyCanvas');
+    const ctx = canvas.getContext('2d');
+    let W, H, DPR, stars=[], meteors=[], tick=0;
+    function resize(){
+      DPR = window.devicePixelRatio || 1;
+      W = canvas.width  = Math.floor(window.innerWidth  * DPR);
+      H = canvas.height = Math.floor(window.innerHeight * DPR);
+      canvas.style.width  = window.innerWidth + 'px';
+      canvas.style.height = window.innerHeight + 'px';
+      genStars();
+    }
+    function rand(min,max){ return Math.random()*(max-min)+min; }
+    function genStars(){
+      const count = Math.floor((W*H)/(1200*1200) * 250); // 密度根據畫面
+      stars = Array.from({length: count}).map(()=>({
+        x: rand(0,W), y: rand(0,H),
+        r: rand(0.6, 1.8)*DPR,
+        a: rand(0.3, 0.9),
+        v: rand(0.0008, 0.0025) // twinkle speed
+      }));
+    }
+    function addMeteor(){
+      // 每隔一段時間來一顆流星
+      const fromTop = Math.random()<0.5;
+      meteors.push({
+        x: rand(0,W*0.6), y: fromTop?rand(0,H*0.4):rand(H*0.6,H),
+        vx: DPR*rand(3.5, 5.5), vy: DPR*rand(1.5, 2.5)*(fromTop?1:-1),
+        life: rand(40, 70)
+      });
+    }
+    function step(){
+      ctx.clearRect(0,0,W,H);
+      // 星星閃爍
+      stars.forEach(s=>{
+        s.a += s.v*(Math.random()>.5?1:-1);
+        if(s.a<0.2) s.a=0.2; if(s.a>0.95) s.a=0.95;
+        ctx.beginPath();
+        ctx.fillStyle = `rgba(255,255,255,${s.a})`;
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+        ctx.fill();
+      });
+      // 流星
+      meteors.forEach(m=>{
+        m.x += m.vx; m.y += m.vy; m.life -= 1;
+        const grad = ctx.createLinearGradient(m.x, m.y, m.x-m.vx*6, m.y-m.vy*6);
+        grad.addColorStop(0,'rgba(255,255,255,.9)');
+        grad.addColorStop(1,'rgba(255,255,255,0)');
+        ctx.strokeStyle = grad; ctx.lineWidth = 2*DPR;
+        ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(m.x-m.vx*6, m.y-m.vy*6); ctx.stroke();
+      });
+      meteors = meteors.filter(m=>m.life>0 && m.x<W && m.y>0 && m.y<H);
+      tick++;
+      if(tick%260===0) addMeteor();
+      requestAnimationFrame(step);
+    }
+    resize(); step();
+    window.addEventListener('resize', resize);
+
+    // 視差游標光暈
+    const glow = document.querySelector('.cursor-glow');
+    window.addEventListener('pointermove', (e)=>{
+      const x = (e.clientX/window.innerWidth)*100;
+      const y = (e.clientY/window.innerHeight)*100;
+      glow.style.setProperty('--mx', x+'%');
+      glow.style.setProperty('--my', y+'%');
+    });
+  </script>
+</body>
+</html>
